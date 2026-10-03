@@ -1,5 +1,5 @@
-import { signInWithPopup } from 'firebase/auth'
-import React from 'react'
+import { signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth'
+import React, { useEffect } from 'react'
 import { auth, googleProvider } from '../../utils/firebase'
 import api from '../../utils/axios'
 import { FcGoogle } from "react-icons/fc";
@@ -36,6 +36,32 @@ function Home() {
         }
     }
 
+    // Check for redirect sign-in result on mount (for mobile & pop-up blocked environments)
+    useEffect(() => {
+        let isMounted = true
+        const checkRedirect = async () => {
+            try {
+                const result = await getRedirectResult(auth)
+                if (result?.user && isMounted) {
+                    setIsLoggingIn(true)
+                    const token = await result.user.getIdToken()
+                    await handleLogin(token)
+                }
+            } catch (error) {
+                console.error("Redirect sign-in error:", error)
+                if (isMounted) {
+                    setLoginError(error.message)
+                }
+            } finally {
+                if (isMounted) {
+                    setIsLoggingIn(false)
+                }
+            }
+        }
+        checkRedirect()
+        return () => { isMounted = false }
+    }, [])
+
     // Login with google using firebase
     const googleLogin = async () => {
         setIsLoggingIn(true)
@@ -46,7 +72,18 @@ function Home() {
             await handleLogin(token)
         } catch (error) {
             console.error("Google sign in error:", error)
-            setLoginError(error.message)
+            if (error?.code === 'auth/popup-blocked') {
+                // If browser blocks the popup, automatically fallback to redirect login
+                try {
+                    await signInWithRedirect(auth, googleProvider)
+                    return
+                } catch (redirectError) {
+                    console.error("Redirect login error:", redirectError)
+                    setLoginError(redirectError.message)
+                }
+            } else {
+                setLoginError(error.message)
+            }
         } finally {
             setIsLoggingIn(false)
         }
