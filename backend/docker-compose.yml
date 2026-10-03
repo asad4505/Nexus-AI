@@ -1,0 +1,83 @@
+services:
+  redis:
+    image: redis:latest
+    container_name: nexus-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  auth:
+    image: nexus-auth:latest
+    container_name: nexus-auth
+    build:
+      context: .
+      dockerfile: ./services/auth/Dockerfile
+    env_file:
+      - ./services/auth/.env
+    environment:
+      - PORT=8001
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  chat:
+    image: nexus-chat:latest
+    container_name: nexus-chat
+    build:
+      context: .
+      dockerfile: ./services/chat/Dockerfile
+    env_file:
+      - ./services/chat/.env
+    environment:
+      - PORT=8002
+    ports:
+      - "8002:8002"
+    restart: unless-stopped
+
+  agent:
+    image: nexus-agent:latest
+    container_name: nexus-agent
+    build:
+      context: .
+      dockerfile: ./services/agent/Dockerfile
+    env_file:
+      - ./services/agent/.env
+    environment:
+      - PORT=8003
+      - REDIS_URL=redis://redis:6379
+      - CHAT_SERVICE=http://chat:8002
+      - AUTH_SERVICE=http://auth:8001
+    ports:
+      - "8003:8003"
+    depends_on:
+      - redis
+      - chat
+      - auth
+    restart: unless-stopped
+
+  gateway:
+    image: nexus-gateway:latest
+    container_name: nexus-gateway
+    build:
+      context: .
+      dockerfile: ./gateway/Dockerfile
+    env_file:
+      - ./gateway/.env
+    environment:
+      - PORT=8000
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SERVICE=http://auth:8001
+      - CHAT_SERVICE=http://chat:8002
+      - AGENT_SERVICE=http://agent:8003
+      - FRONTEND_URL=http://localhost:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - auth
+      - chat
+      - agent
+    restart: unless-stopped
