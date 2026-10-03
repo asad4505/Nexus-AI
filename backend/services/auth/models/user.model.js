@@ -19,6 +19,10 @@ const userSchema = new mongoose.Schema({
     totalCredits:{
         type:Number,
         default:100
+    },
+    sessionId:{
+        type:String,
+        index:true
     }
 },{
     timestamps:true

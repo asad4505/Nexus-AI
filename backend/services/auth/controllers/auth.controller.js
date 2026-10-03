@@ -30,10 +30,12 @@ export const login = async (req, res) => {
                 avatar: decoded.picture
             })
         }
-        console.log("[AUTH LOGIN] 4. User ready, ID:", user._id)
-
         // Creating session id for user
         const sessionId = randomUUID()
+
+        // Persist sessionId on MongoDB user model as backup/source of truth
+        user.sessionId = sessionId
+        await user.save()
 
         console.log("[AUTH LOGIN] 5. Storing session in Redis...")
         const sessionPayload = JSON.stringify({
@@ -94,5 +96,31 @@ export const logOut = async (req, res) => {
         return res.status(200).json({ message: "logout successfully" })
     } catch (error) {
         return res.status(500).json({ message: `logout error ${error}` })
+    }
+}
+
+// Fallback session verification using MongoDB if Redis is unreachable
+export const verifySession = async (req, res) => {
+    try {
+        const { sessionId } = req.params
+        if (!sessionId) {
+            return res.status(400).json({ message: "No sessionId provided" })
+        }
+        const user = await User.findOne({ sessionId })
+        if (!user) {
+            return res.status(404).json({ message: "Session expired or not found in MongoDB" })
+        }
+        return res.status(200).json({
+            userId: user._id,
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            plan: user.plan || "free",
+            credits: user.credits || 100,
+            totalCredits: user.totalCredits || 100,
+            planExpiresAt: user.planExpiresAt
+        })
+    } catch (err) {
+        return res.status(500).json({ message: `verify session error ${err.message}` })
     }
 }

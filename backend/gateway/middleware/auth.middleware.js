@@ -1,4 +1,5 @@
 import redis from "../../shared/redis/redis.js"
+import axios from "axios"
 //middleware to check if user is authenticated 
 
 const protect = async (req,res,next)=>{
@@ -13,22 +14,33 @@ const protect = async (req,res,next)=>{
             return res.status(401).json({ message: "unauthorized" })
         }
 
-        // Auto-reconnect if redis disconnected or ended
-        if (redis.status === "end" || redis.status === "close") {
-            try {
-                await redis.connect()
-            } catch (connErr) {
-                console.warn("⚠️ Redis auto-reconnect attempt:", connErr.message)
+        let session = null
+
+        // Try reading from Redis first (with 3-second timeout protection)
+        try {
+            if (redis.status !== "end" && redis.status !== "close") {
+                session = await redis.get(`session-${sessionId}`)
+                console.log("Session lookup (Redis):", session ? "found" : "not found")
             }
+        } catch (redisErr) {
+            console.warn("⚠️ Redis read error in protect:", redisErr.message)
         }
 
-        // Checking if session id is present in Redis
-        const session = await redis.get(`session-${sessionId}`)
-        console.log("Session lookup:", session ? "found" : "not found")
+        // If Redis failed or did not have session, fallback to Auth Service (MongoDB)
+        if (!session) {
+            try {
+                const authServiceUrl = process.env.AUTH_SERVICE || "http://127.0.0.1:8001"
+                const { data } = await axios.get(`${authServiceUrl}/verify-session/${sessionId}`, { timeout: 3500 })
+                if (data?.userId) {
+                    console.log("✅ Session verified via Auth DB Fallback for user:", data.name || data.userId)
+                    req.user = data
+                    return next()
+                }
+            } catch (fallbackErr) {
+                console.warn("⚠️ Auth DB fallback lookup failed:", fallbackErr?.response?.data?.message || fallbackErr.message)
+            }
 
-        // Checking if session is expired
-        if (!session){
-            console.log(`Protect failed: Session ${sessionId} expired or not found in Redis`)
+            console.log(`Protect failed: Session ${sessionId} expired or not found`)
             return res.status(401).json({ message: "session expired" })
         }
 
