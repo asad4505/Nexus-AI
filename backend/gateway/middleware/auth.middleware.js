@@ -7,29 +7,39 @@ const protect = async (req,res,next)=>{
                           req.headers["x-session-id"] || 
                           (req.headers["authorization"]?.startsWith("Bearer ") ? req.headers["authorization"].split(" ")[1] : null)
         
-        // checking if session id is present in the request
+        // Checking if session id is present in the request
         if (!sessionId){
             console.log("Protect failed: No session ID found in cookies or headers")
-            return res.status(400).json({message:"unauthorized"})
+            return res.status(401).json({ message: "unauthorized" })
         }
 
-        //checking if session id is present in the redis
+        // Auto-reconnect if redis disconnected or ended
+        if (redis.status === "end" || redis.status === "close") {
+            try {
+                await redis.connect()
+            } catch (connErr) {
+                console.warn("⚠️ Redis auto-reconnect attempt:", connErr.message)
+            }
+        }
+
+        // Checking if session id is present in Redis
         const session = await redis.get(`session-${sessionId}`)
         console.log("Session lookup:", session ? "found" : "not found")
 
-        //checking if session is expired
-        if(!session){
+        // Checking if session is expired
+        if (!session){
             console.log(`Protect failed: Session ${sessionId} expired or not found in Redis`)
-            return res.status(400).json({message:"session expired"})
+            return res.status(401).json({ message: "session expired" })
         }
 
-        //extracting user data from the session
-        req.user=JSON.parse(session)
-        //calling next middleware
+        // Extracting user data from the session
+        req.user = JSON.parse(session)
+        // Calling next middleware
         next()
     }
     catch(error){
-        return res.status(500).json({message:`protect error ${error}`})
+        console.error("Protect middleware error:", error)
+        return res.status(500).json({ message: `protect error: ${error.message || error}` })
     }
 }
 

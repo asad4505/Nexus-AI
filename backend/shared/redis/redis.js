@@ -1,18 +1,29 @@
 import Redis from "ioredis"
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379"
+let redisUrl = (process.env.REDIS_URL || "redis://localhost:6379").trim()
 
-// Upstash and cloud Redis require TLS (rediss:// or upstash domain)
-const isTls = redisUrl.startsWith("rediss://") || redisUrl.includes("upstash.io")
+// Upstash requires TLS. Automatically upgrade redis:// to rediss:// if upstash is used
+if (redisUrl.includes("upstash.io") && redisUrl.startsWith("redis://")) {
+    redisUrl = redisUrl.replace("redis://", "rediss://")
+}
+
+const isTls = redisUrl.startsWith("rediss://")
 
 const redis = new Redis(redisUrl, {
     maxRetriesPerRequest: 3,
-    connectTimeout: 8000,
+    connectTimeout: 10000,
     commandTimeout: 5000,
     enableReadyCheck: false,
     retryStrategy(times) {
-        if (times > 5) return null
-        return Math.min(times * 200, 2000)
+        // Continuous reconnect with exponential backoff — never return null (never give up)
+        return Math.min(times * 100, 3000)
+    },
+    reconnectOnError(err) {
+        const targetErrors = ["READONLY", "ECONNRESET", "ETIMEDOUT", "Connection is closed"]
+        if (targetErrors.some(target => err.message.includes(target))) {
+            return true // Force reconnect
+        }
+        return false
     },
     ...(isTls ? { tls: { rejectUnauthorized: false } } : {})
 })
