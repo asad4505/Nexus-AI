@@ -7,11 +7,14 @@ const connectDb = async()=>{
             console.warn("⚠️ AUTH MONGODB_URI or MONGODB_URI not provided")
             return
         }
-        await mongoose.connect(uri)
+        await mongoose.connect(uri, {
+            serverSelectionTimeoutMS: 5000,
+            connectTimeoutMS: 10000,
+        })
         console.log("✅ MongoDB Connected (Auth)")
     }
     catch(error){
-        console.log(`❌ db error ${error}`)
+        console.error(`❌ MongoDB (Auth) connection error: ${error.message}`)
     }
 }
 

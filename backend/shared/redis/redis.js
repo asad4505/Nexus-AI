@@ -2,14 +2,17 @@ import Redis from "ioredis"
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379"
 
-const isTls = redisUrl.startsWith("rediss://")
+// Upstash and cloud Redis require TLS (rediss:// or upstash domain)
+const isTls = redisUrl.startsWith("rediss://") || redisUrl.includes("upstash.io")
 
 const redis = new Redis(redisUrl, {
-    maxRetriesPerRequest: null,
+    maxRetriesPerRequest: 3,
+    connectTimeout: 8000,
+    commandTimeout: 5000,
     enableReadyCheck: false,
     retryStrategy(times) {
-        const delay = Math.min(times * 100, 3000)
-        return delay
+        if (times > 5) return null
+        return Math.min(times * 200, 2000)
     },
     ...(isTls ? { tls: { rejectUnauthorized: false } } : {})
 })
