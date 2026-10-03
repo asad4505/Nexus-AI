@@ -17,43 +17,56 @@ export const agent=async (req,res,next) => {
         //Reads x-user-id from headers (standard pattern when behind an API gateway or reverse proxy) to enforce per-user agent rate limits and billing
         const userId=req.headers["x-user-id"]
 
-        //save the message to the database
-        //calling the save message service
+        // Save the user message to the database (non-blocking for AI response)
         const chatServiceUrl = process.env.CHAT_SERVICE || "http://127.0.0.1:8002"
-        await axios.post(`${chatServiceUrl}/save-message`,{
-            conversationId,role:"user",content:prompt
-        })
-        
-        //invoke the graph
-        //result contains the accumulated output channels: aiResponse, agent, plus any additional channels returned by worker agents (such as images or artifacts).
-        const result=await graph.invoke({
-            prompt,conversationId,agent,userId,file
-        })
+        try {
+            await axios.post(`${chatServiceUrl}/save-message`, {
+                conversationId, role: "user", content: prompt
+            }, { timeout: 3000 })
+        } catch (saveErr) {
+            console.warn("⚠️ Could not save user message to chat service:", saveErr.message)
+        }
 
-
-        console.log("result",result)
-
-
-        // saving the user message to the database
-        await addMessage(conversationId,"user",prompt)
-        //saving the assistant response to the database
-        await addMessage(conversationId,"assistant",result.aiResponse)
-        //calling the save message service
-        await axios.post(`${chatServiceUrl}/save-message`,{
-            conversationId,role:"assistant",content:result?.aiResponse,images:result?.images,artifacts:result?.artifacts
+        // Invoke the graph
+        console.log(`[AGENT] Invoking graph for prompt: "${prompt?.slice(0, 30)}..." with agent: ${agent || "auto"}`)
+        const result = await graph.invoke({
+            prompt, conversationId, agent, userId, file
         })
 
-        //sending the response to the client
+        console.log("[AGENT] Graph completed. aiResponse length:", result?.aiResponse?.length || 0)
+
+        // Save conversation history to memory and DB asynchronously
+        try {
+            await addMessage(conversationId, "user", prompt)
+            if (result?.aiResponse) {
+                await addMessage(conversationId, "assistant", result.aiResponse)
+            }
+            await axios.post(`${chatServiceUrl}/save-message`, {
+                conversationId,
+                role: "assistant",
+                content: result?.aiResponse,
+                images: result?.images,
+                artifacts: result?.artifacts
+            }, { timeout: 3000 })
+        } catch (postSaveErr) {
+            console.warn("⚠️ Could not save assistant response to chat service:", postSaveErr.message)
+        }
+
+        // Sending the response to the client
         return res.status(200).json({
-            answer:result?.aiResponse,
-            images:result?.images,
-            artifacts:result?.artifacts
+            answer: result?.aiResponse || "I didn't receive any response from the AI model.",
+            images: result?.images || [],
+            artifacts: result?.artifacts || []
         })
-       
+
     } 
-    //handling the error
+    // Handling errors
     catch (error) {
-       next(error)
+       console.error("[AGENT ERROR]:", error)
+       return res.status(500).json({
+           answer: `Agent Error: ${error?.message || "Internal server error"}`,
+           error: error.message
+       })
     }
 }
 
