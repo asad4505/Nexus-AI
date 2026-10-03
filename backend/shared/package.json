@@ -1,0 +1,9 @@
+{
+  "name": "shared",
+  "version": "1.0.0",
+  "description": "Shared modules for Nexus AI Backend",
+  "type": "module",
+  "dependencies": {
+    "ioredis": "^6.0.0"
+  }
+}
