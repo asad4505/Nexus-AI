@@ -1,4 +1,4 @@
-import { signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth'
+import { signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged } from 'firebase/auth'
 import React, { useEffect } from 'react'
 import { auth, googleProvider } from '../../utils/firebase'
 import api from '../../utils/axios'
@@ -32,35 +32,56 @@ function Home() {
             setWelcomeUser(data)
         } catch (error) {
             console.error("Backend login error:", error)
-            setLoginError(error?.response?.data?.message || "Failed to authenticate with backend server")
+            setLoginError(error?.response?.data?.message || error?.message || "Failed to authenticate with backend server")
         }
     }
 
-    // Check for redirect sign-in result on mount (for mobile & pop-up blocked environments)
+    // Handle authentication state and redirect results
     useEffect(() => {
         let isMounted = true
-        const checkRedirect = async () => {
-            try {
-                const result = await getRedirectResult(auth)
-                if (result?.user && isMounted) {
+        let hasHandledAuth = false
+
+        // 1. Process getRedirectResult if coming back from a redirect flow
+        getRedirectResult(auth)
+            .then(async (result) => {
+                if (result?.user && isMounted && !hasHandledAuth) {
+                    hasHandledAuth = true
                     setIsLoggingIn(true)
                     const token = await result.user.getIdToken()
                     await handleLogin(token)
                 }
-            } catch (error) {
+            })
+            .catch((error) => {
                 console.error("Redirect sign-in error:", error)
-                if (isMounted) {
-                    setLoginError(error.message)
-                }
-            } finally {
-                if (isMounted) {
-                    setIsLoggingIn(false)
+                if (isMounted) setLoginError(error.message)
+            })
+            .finally(() => {
+                if (isMounted) setIsLoggingIn(false)
+            })
+
+        // 2. onAuthStateChanged catches the authenticated user even if getRedirectResult
+        // returns null due to browser third-party cookie/storage partitioning
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            if (firebaseUser && isMounted && !userData && !hasHandledAuth) {
+                hasHandledAuth = true
+                setIsLoggingIn(true)
+                try {
+                    const token = await firebaseUser.getIdToken()
+                    await handleLogin(token)
+                } catch (error) {
+                    console.error("Firebase auth state token error:", error)
+                    if (isMounted) setLoginError(error.message)
+                } finally {
+                    if (isMounted) setIsLoggingIn(false)
                 }
             }
+        })
+
+        return () => {
+            isMounted = false
+            unsubscribe()
         }
-        checkRedirect()
-        return () => { isMounted = false }
-    }, [])
+    }, [userData])
 
     // Login with google using firebase
     const googleLogin = async () => {

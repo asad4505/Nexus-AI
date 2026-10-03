@@ -20,10 +20,12 @@ function App() {
     useEffect(() => {
         const getUser = async () => {
             const data = await getCurrentUser()
-            dispatch(setUserdata(data))
+            if (data) {
+                dispatch(setUserdata(data))
+            }
         }
         getUser()
-    }, [])
+    }, [dispatch])
 
     // Called by WelcomeSplash when the user clicks "Get Started"
     const handleSplashDone = () => {
