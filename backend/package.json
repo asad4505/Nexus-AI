@@ -10,8 +10,5 @@
     "install:all": "npm --prefix gateway install && npm --prefix services/auth install && npm --prefix services/chat install && npm --prefix services/agent install",
     "postinstall": "npm run install:all"
   },
-  "dependencies": {
-    "dotenv": "^17.4.2",
-    "ioredis": "^6.0.0"
-  }
+  "dependencies": {}
 }

@@ -2,11 +2,10 @@ import { spawn } from "child_process"
 import path from "path"
 import { fileURLToPath } from "url"
 import fs from "fs"
-import dotenv from "dotenv"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// Load local environment files if present
+// Load local environment files if present (native Node.js 20+ feature)
 const envFiles = [
     path.resolve(__dirname, ".env"),
     path.resolve(__dirname, "gateway/.env"),
@@ -17,7 +16,13 @@ const envFiles = [
 
 for (const envFile of envFiles) {
     if (fs.existsSync(envFile)) {
-        dotenv.config({ path: envFile })
+        if (typeof process.loadEnvFile === "function") {
+            try {
+                process.loadEnvFile(envFile)
+            } catch {
+                // Ignore syntax warnings in local env
+            }
+        }
     }
 }
 
