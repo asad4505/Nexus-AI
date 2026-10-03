@@ -7,8 +7,10 @@
   "scripts": {
     "start": "node start-all.js",
     "build": "npm run install:all",
-    "install:all": "npm --prefix gateway install && npm --prefix services/auth install && npm --prefix services/chat install && npm --prefix services/agent install",
+    "install:all": "npm install && npm --prefix gateway install && npm --prefix services/auth install && npm --prefix services/chat install && npm --prefix services/agent install",
     "postinstall": "npm run install:all"
   },
-  "dependencies": {}
+  "dependencies": {
+    "ioredis": "^6.0.0"
+  }
 }
